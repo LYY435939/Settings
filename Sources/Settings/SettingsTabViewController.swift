@@ -195,15 +195,29 @@ final class SettingsTabViewController: NSViewController, SettingsStyleController
 		}
 	}
 
+	private func contentSize(for viewController: NSViewController) -> CGSize {
+		let view = viewController.view
+		view.layoutSubtreeIfNeeded()
+
+		let fittingSize = view.fittingSize
+		if fittingSize != .zero {
+			return fittingSize
+		}
+
+		let preferredContentSize = viewController.preferredContentSize
+		if preferredContentSize != .zero {
+			return preferredContentSize
+		}
+
+		return view.bounds.size
+	}
+
 	private func setWindowFrame(for viewController: NSViewController, animated: Bool = false) {
 		guard let window else {
 			preconditionFailure()
 		}
 
-		viewController.view.layoutSubtreeIfNeeded()
-
-		let fittingSize = viewController.view.fittingSize
-		let contentSize = fittingSize == .zero ? viewController.view.bounds.size : fittingSize
+		let contentSize = contentSize(for: viewController)
 
 		let newWindowSize = window.frameRect(forContentRect: CGRect(origin: .zero, size: contentSize)).size
 		var frame = window.frame
