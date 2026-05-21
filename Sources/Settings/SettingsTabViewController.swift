@@ -3,12 +3,10 @@ import Cocoa
 final class SettingsTabViewController: NSViewController, SettingsStyleControllerDelegate {
 	private var activeTab: Int?
 	private var panes = [SettingsPane]()
-	private var pendingTabTransition: (index: Int, animated: Bool)?
 	private var style: Settings.Style?
 	internal var settingsPanesCount: Int { panes.count }
 	private var settingsStyleController: SettingsStyleController!
 	private var isKeepingWindowCentered: Bool { settingsStyleController.isKeepingWindowCentered }
-	private var isTransitioningTabs = false
 
 	private var toolbarItemIdentifiers: [NSToolbarItem.Identifier] {
 		settingsStyleController?.toolbarItemIdentifiers() ?? []
@@ -67,31 +65,21 @@ final class SettingsTabViewController: NSViewController, SettingsStyleController
 	}
 
 	func activateTab(index: Int, animated: Bool) {
-		guard panes.indices.contains(index) else {
-			return
-		}
-
-		if activeTab == nil {
+		defer {
 			activeTab = index
 			settingsStyleController.selectTab(index: index)
 			updateWindowTitle(tabIndex: index)
+		}
+
+		if activeTab == nil {
 			immediatelyDisplayTab(index: index)
-			return
-		}
+		} else {
+			guard index != activeTab else {
+				return
+			}
 
-		guard index != activeTab else {
-			pendingTabTransition = nil
-			return
+			animateTabTransition(index: index, animated: animated)
 		}
-
-		if isTransitioningTabs {
-			pendingTabTransition = (index, animated)
-			return
-		}
-
-		settingsStyleController.selectTab(index: index)
-		updateWindowTitle(tabIndex: index)
-		animateTabTransition(fromIndex: activeTab, toIndex: index, animated: animated)
 	}
 
 	func restoreInitialTab() {
@@ -130,18 +118,15 @@ final class SettingsTabViewController: NSViewController, SettingsStyleController
 		setWindowFrame(for: toViewController, animated: false)
 	}
 
-	private func animateTabTransition(fromIndex: Int?, toIndex: Int, animated: Bool) {
-		guard let activeTab = fromIndex else {
+	private func animateTabTransition(index: Int, animated: Bool) {
+		guard let activeTab else {
 			assertionFailure("animateTabTransition called before a tab was displayed; transition only works from one tab to another")
-			activeTab = toIndex
-			immediatelyDisplayTab(index: toIndex)
+			immediatelyDisplayTab(index: index)
 			return
 		}
 
 		let fromViewController = panes[activeTab]
-		let toViewController = panes[toIndex]
-		self.activeTab = toIndex
-		isTransitioningTabs = true
+		let toViewController = panes[index]
 
 		// View controller animations only work on macOS 10.14 and newer.
 		let options: NSViewController.TransitionOptions
@@ -167,14 +152,6 @@ final class SettingsTabViewController: NSViewController, SettingsStyleController
 			}
 
 			activeChildViewConstraints = toViewController.view.constrainToSuperviewBounds()
-			isTransitioningTabs = false
-
-			if let pendingTabTransition, pendingTabTransition.index != activeTab {
-				self.pendingTabTransition = nil
-				activateTab(index: pendingTabTransition.index, animated: pendingTabTransition.animated)
-			} else {
-				self.pendingTabTransition = nil
-			}
 		}
 	}
 
@@ -223,7 +200,10 @@ final class SettingsTabViewController: NSViewController, SettingsStyleController
 			preconditionFailure()
 		}
 
-		let contentSize = viewController.view.fittingSize
+		viewController.view.layoutSubtreeIfNeeded()
+
+		let fittingSize = viewController.view.fittingSize
+		let contentSize = fittingSize == .zero ? viewController.view.bounds.size : fittingSize
 
 		let newWindowSize = window.frameRect(forContentRect: CGRect(origin: .zero, size: contentSize)).size
 		var frame = window.frame
